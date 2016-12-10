@@ -9,6 +9,13 @@ import pymunk
 from pymunk.vec2d import Vec2d
 from pymunk.pygame_util import draw
 
+import os, sys
+
+# set SDL to use the dummy NULL video driver,
+#   so it doesn't need a windowing system.
+# os.environ["SDL_VIDEODRIVER"] = "dummy"
+
+
 # PyGame init
 width = 1000
 height = 700
@@ -142,9 +149,11 @@ class GameState:
             self.recover_from_crash(driving_direction)
         else:
             # Higher readings are better, so return the sum.
-            reward = -5 * int(self.sum_readings(readings) / 10)
-        self.num_steps += 1
+            # reward = -5 * int(self.sum_readings(readings) / 10)
+            reward = -5 * np.min(readings)
 
+        self.num_steps += 1
+        # print reward
         return reward, state
 
     def move_obstacles(self):
@@ -162,7 +171,7 @@ class GameState:
         self.cat_body.velocity = speed * direction
 
     def car_is_crashed(self, readings):
-        if readings[0] == 1 or readings[1] == 1 or readings[2] == 1:
+        if np.min(readings) == 1:
             return True
         else:
             return False
@@ -225,6 +234,7 @@ class GameState:
         if show_sensors:
             pygame.display.update()
 
+        # print readings
         return readings
 
     def get_arm_distance(self, arm, x, y, angle, offset):
@@ -244,7 +254,7 @@ class GameState:
             # if we did.
             if rotated_p[0] <= 0 or rotated_p[1] <= 0 \
                     or rotated_p[0] >= width or rotated_p[1] >= height:
-                i = i + 0  # Sensor is off the screen.
+                i = i + 0# return i  # Sensor is off the screen.
             else:
                 obs = screen.get_at(rotated_p)
                 if self.get_track_or_not(obs) == 1:
@@ -278,7 +288,7 @@ class GameState:
         return int(new_x), int(new_y)
 
     def get_track_or_not(self, reading):
-        if reading == THECOLORS['orange']:
+        if reading == THECOLORS['orange'] or reading == THECOLORS['blue']:
             return 1
         else:
             return 0
