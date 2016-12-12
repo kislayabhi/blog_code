@@ -48,23 +48,6 @@ class Agent():
     def StoQ_FApprox_train(self, current_input, target_output):
         return self.sess.run([self.train_op, self.merged_summary_op], feed_dict={self.inputs1: current_input, self.nextQ: target_output})
 
-    # def experience_replay(self, new_experience):
-    #     buff_size = len(self.experience_buffer)
-    #     if( buff_size >= self.experience_memory):
-    #         self.experience_buffer.popleft()
-    #     self.experience_buffer.append(new_experience)
-    #     buff_size += 1
-    #
-    #     # print len(self.experience_buffer)
-    #
-    #     # Sample minibatches from the deque
-    #     if(buff_size > self.minibatch_size):
-    #         sampled_experience = random.sample(self.experience_buffer, self.minibatch_size)
-    #     else:
-    #         sampled_experience = random.sample(self.experience_buffer, buff_size)
-    #
-    #     return sampled_experience
-
     def epsilon_greedy(self, qval):
         ran = random.randint(0, 100) / 100.0
         if (ran < self.epsilon):
@@ -93,17 +76,9 @@ class Agent():
                 orgstate = s.copy()
 
                 # Choose a from s using policy derived from Q (epsilon-greedy)
-                # Qs = self.StoQ_FApprox(s)
-                Qs = self.sess.run(self.Qout, feed_dict={self.inputs1: s})
+                Qs = self.StoQ_FApprox(s)
 
                 a = self.epsilon_greedy(Qs)
-
-                # if(np.random.rand(1) > epsilon):
-                # # if(np.random.rand(1) > 0):
-                #     a = np.argmax(Qs)
-                # else:
-                #     a = np.random.randint(len(Qs[0])-1)
-
 
 
                 # Take action a, observe r and snext.
@@ -111,14 +86,6 @@ class Agent():
 
                 # Tweak the Function approximator to behave according to the
                 # current rewards.
-                # target_reward = Qs.copy()
-                # print "target_reward:", target_reward, target_reward[0,0]
-
-                # if(r == 500):
-                #     target_reward[0, a] = r
-                # else:
-                #     Qnext = self.StoQ_FApprox(snext)
-                #     target_reward[0, a] = r + self.gamma * np.amax(Qnext)
 
                 # Instead of training from the current state and target_reward,
                 # we will train using a mini-batch.
@@ -137,73 +104,61 @@ class Agent():
                 if(len(replay)>self.minibatch_size):
                     if(len(replay)>self.experience_memory):
                         replay.pop(0)
-                    summary = self.exp_replay(replay)
-                    # Write logs at every iteration
+                    minibatch = random.sample(replay, self.minibatch_size)
+
+                    hist_states=[]
+                    hist_target_reward=[]
+
+                    for experience in minibatch:
+                        h_s = experience[0]
+                        h_a = experience[1]
+                        h_r = experience[2]
+                        h_snext = experience[3]
+
+                        oldq = self.StoQ_FApprox(h_s)
+                        newq = self.StoQ_FApprox(h_snext)
+                        maxq = np.max(newq)
+                        target = oldq.copy()
+
+                        # print "target", target
+
+                        if(h_r == 500):
+                            # Terminal stage
+                            target[0][h_a] = h_r
+                        else:
+                            # Non terminal stage
+                            target[0][h_a] = h_r + self.gamma * maxq
+
+                        hist_states.append(h_s.copy())
+                        hist_target_reward.append(target.copy())
+
+                    hist_states = np.array(hist_states).reshape(self.minibatch_size, -1)
+                    hist_target_reward = np.array(hist_target_reward).reshape(self.minibatch_size, -1)
+
+                    _, summary = self.StoQ_FApprox_train(hist_states, hist_target_reward)
                     summary_writer.add_summary(summary, total_time)
                 total_time+=1
 
 
-                # # print history
-                # history = random.sample(replay, self.minibatch_size)
-                #
-                #
-                # hist_states=[]
-                # hist_target_reward=[]
-                #
-                # for experience in history:
-                #     h_s = experience[0]
-                #     h_a = experience[1]
-                #     h_r = experience[2]
-                #     h_snext = experience[3]
-                #
-                #     Q_h_s = self.StoQ_FApprox(h_s)
-                #     Q_h_snext = self.StoQ_FApprox(h_snext)
-                #     maxq = np.max(Q_h_snext)
-                #     target = Q_h_s.copy()
-                #
-                #     # print "target", target
-                #
-                #     if(h_r == 500):
-                #         # Terminal stage
-                #         target[0][a] = h_r
-                #     else:
-                #         # Non terminal stage
-                #
-                #         # print "new Q", Q_h_snext
-                #         target[0][a] = h_r + self.gamma * maxq
-                #
-                #     hist_states.append(h_s.copy())
-                #     hist_target_reward.append(target.copy())
-                #
-                # hist_states = np.array(hist_states).reshape(self.minibatch_size, -1)
-                # hist_target_reward = np.array(hist_target_reward).reshape(self.minibatch_size, -1)
-                # # print np.array(hist_states).reshape(len(history), -1)
-                # # print np.array(hist_target_reward).reshape(len(history), -1)
-                # # raw_input("wait...")
-
-                # print history
 
 
-
-
-
-
-
-
-    def exp_replay(self,replay):
-        minibatch = random.sample(replay, self.minibatch_size)
+    def exp_replay(self,replay, minibatch):
         x, y = [], []
+        # print "len exp", len(minibatch)
         for exp in minibatch:
-            old_state = exp[0]
-            action = exp[1]
-            reward = exp[2]
-            new_state = exp[3]
+            h_s = exp[0]
+            h_a = exp[1]
+            h_r = exp[2]
+            h_snext = exp[3]
+
             # get old state qval
             # (changed) oldq = self.nn.predict(old_state)
-            oldq = self.sess.run(self.Qout, feed_dict={self.inputs1: old_state})
+            # oldq = self.sess.run(self.Qout, feed_dict={self.inputs1: old_state})
+            oldq = self.StoQ_FApprox(h_s)
             # get new state qval
             # (changed) newq = self.nn.predict(new_state)
-            newq = self.sess.run(self.Qout, feed_dict={self.inputs1: new_state})
+            # newq = self.sess.run(self.Qout, feed_dict={self.inputs1: new_state})
+            newq = self.StoQ_FApprox(h_snext)
             # best action qval
             maxq = np.max(newq)
             target = oldq.copy()
@@ -211,13 +166,13 @@ class Agent():
             # print "newq", newq
 
             # print target
-            if (reward == 500):
+            if (h_r == 500):
                 # terminal state
-                target[0][action] = reward
+                target[0][h_a] = h_r
             else:
                 # non-terminal state
-                target[0][action] = reward + self.gamma * maxq
-            x.append(old_state.copy())
+                target[0][h_a] = h_r + self.gamma * maxq
+            x.append(h_s.copy())
             y.append(target.copy())
             # print target
 
@@ -228,7 +183,8 @@ class Agent():
         # print "y", y
         # raw_input("wait...")
         # self.nn.train(x, y, self.batchsize)
-        _, summary = self.sess.run([self.train_op, self.merged_summary_op], feed_dict={self.inputs1: x, self.nextQ: y})
+        # _, summary = self.sess.run([self.train_op, self.merged_summary_op], feed_dict={self.inputs1: x, self.nextQ: y})
+        _, summary = self.StoQ_FApprox_train(x, y)
 
         return summary
 
